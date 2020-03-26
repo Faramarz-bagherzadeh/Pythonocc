@@ -1,0 +1,498 @@
+import math
+import sys
+import time
+import os
+from OCC.Display.SimpleGui import init_display
+from OCC.Extend.DataExchange import read_stl_file
+from OCC.Core.BRepExtrema import *
+from OCC.Display.SimpleGui import init_display
+from OCC.Core.StlAPI import *
+from OCC.Core.TopoDS import *
+from OCC.Display.SimpleGui import *
+from OCC.Extend.DataExchange import *
+from OCC.Core.TopoDS import *
+from OCC.Core.TopExp import *
+from OCC.Core.TopAbs import *
+from OCC.Core.TopTools import *
+
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeTorus
+from OCC.Core.BRepTools import breptools_Write
+
+from OCC.Display.SimpleGui import *
+from OCC.Core.Bnd import Bnd_Box
+from OCC.Core.BRepBndLib import brepbndlib_Add
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+from OCC.Core.BRep import *
+from OCC.Core.BRepAlgoAPI import *
+from OCC.Core.BRepBuilderAPI import *
+from OCC.Core.BRepPrimAPI import *
+from OCC.Display.SimpleGui import init_display
+from OCC.Core.gp import *
+from OCC.Core.BRepOffsetAPI import BRepOffsetAPI_MakeOffset
+from OCC.Core.GeomAbs import *
+display, start_display, add_menu, add_function_to_menu = init_display()
+
+def z_max_finder(stl_shp,tol=1e-6,use_mesh=True):
+    #first change the model to mesh form in order to get an accurate MAX and Min bounfing box from topology
+    bbox = Bnd_Box()
+    bbox.SetGap(tol)
+    if use_mesh:
+        mesh = BRepMesh_IncrementalMesh()
+        mesh.SetParallelDefault(True)
+        mesh.SetShape(stl_shp)
+        mesh.Perform()
+        if not mesh.IsDone():
+            raise AssertionError("Mesh not done.")
+    brepbndlib_Add(stl_shp, bbox, use_mesh)
+
+    xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+    return zmax
+def get_vertex_from_edge(aEdge):
+    myvertexlist=[]
+    VertexExplorer = TopExp_Explorer(aEdge, TopAbs_VERTEX)
+    aVertex1 = topods.Vertex(VertexExplorer.Current())
+    VertexExplorer.Next()
+    aVertex2 = topods.Vertex(VertexExplorer.Current())
+    myvertexlist.append(aVertex1)
+    myvertexlist.append(aVertex2)
+    return myvertexlist
+    
+def Get_my_X(aVertex):
+     #translating the vertex to a point to get point location
+    point=BRep_Tool.Pnt(aVertex)
+    x=point.X()
+    
+    return x
+
+def Get_my_Y(aVertex):
+     #translating the vertex to a point to get point location
+    point=BRep_Tool.Pnt(aVertex)
+    y=point.Y()
+    return y
+
+def Get_my_Z(aVertex):
+     #translating the vertex to a point to get point location
+    point=BRep_Tool.Pnt(aVertex)
+    z=point.Z()
+    return z
+
+def raster_from_wire(aWire):
+    aPrismVec = gp_Vec(0, 0,200)
+    aVertex=aWire.Vertex()
+    z=Get_my_Z(aVertex)
+    f1=BRepBuilderAPI_MakeFace (aWire.Wire())
+    myBody = BRepPrimAPI_MakePrism(f1.Face(), aPrismVec)
+    myedge=BRepBuilderAPI_MakeEdge(gp_Pnt(0,0,z),gp_Pnt(50,0,z))
+    boolean_result =BRepAlgoAPI_Section(myBody.Shape(),myedge.Shape())
+    display.DisplayShape(boolean_result.Shape())
+    
+def make_edges_list(section):
+    sections2=[]
+    EdgeExplorer = TopExp_Explorer(section.Shape(), TopAbs_EDGE)
+    while EdgeExplorer.More():
+        aEdge = topods.Edge(EdgeExplorer.Current())
+        sections2.append(aEdge)
+        EdgeExplorer.Next()
+    return sections2
+        
+    
+def find_outer_boundary(edges_list):
+    boundary_edge_list=[]
+    #getting first edge from the list
+    first_edge_vertex_list=get_vertex_from_edge(edges_list[0])
+    
+    #getting a reference point-where the boundary starts and finishes
+    reference_point=[Get_my_X(first_edge_vertex_list[0]),Get_my_Y(first_edge_vertex_list[0])]
+    
+    #getting runner point which is a common point between current edge and next connected edge
+    runner_point=[Get_my_X(first_edge_vertex_list[1]),Get_my_Y(first_edge_vertex_list[1])]
+    boundary_edge_list.append(edges_list[0])
+    for m in range(len(edges_list)-2):
+        for i in range(len(edges_list)-1):
+            aEdge1=edges_list[i+1]
+            vertex_list1=get_vertex_from_edge(aEdge1)
+            vertex1=[Get_my_X(vertex_list1[0]),Get_my_Y(vertex_list1[0])]
+            vertex2=[Get_my_X(vertex_list1[1]),Get_my_Y(vertex_list1[1])]
+        
+            if vertex1[0]==runner_point[0] and vertex1[1]==runner_point[1]:
+                boundary_edge_list.append(aEdge1)
+                runner_point= vertex2
+                
+            
+
+    return boundary_edge_list
+            
+        
+  
+
+def Section_finder(Z_level_depth,stl_shp):
+   sections = []
+   sections2 = []
+   vertexlist=[]
+   
+  
+   point1=gp_Pnt(0,0,Z_level_depth)
+   dir1=gp_Dir(0,0,1)
+   plan1=gp_Pln(point1,dir1)
+   section_shp = BRepAlgoAPI_Section()
+    
+    
+   section_shp = BRepAlgoAPI_Section(stl_shp, plan1, False)
+
+   section_shp.Build()
+    
+    #getting list of edges from section
+   edges_list=make_edges_list(section_shp)
+    
+   outer_boundary=find_outer_boundary(edges_list)
+    
+    
+   #for k in range(len(outer_boundary)):
+      # display.DisplayShape(outer_boundary[k])
+    
+    #making wire from edges
+   mkWire=BRepBuilderAPI_MakeWire()   
+   for k in range(len(outer_boundary)):
+       aWire = BRepBuilderAPI_MakeWire(outer_boundary[k])
+       mkWire.Add(aWire.Wire())
+    
+   return mkWire
+        
+        
+        
+def top_level_rasetr(x1,y1,x2,y2,z,step_over):
+    #x1,y1,are the coordinate of first vertex(down left) of a rectangule 
+    #x2,y2,are the coordinate of second(right top) vertex of rectangule
+    #step_over is distance between each pass
+    #z should be higher than model
+    nb_pass=abs(y1-y2)//step_over
+    step_over=abs(y1-y2)/nb_pass
+    mkWire=BRepBuilderAPI_MakeWire()
+    xp=x1
+    yp=y1
+    point=[xp,yp,z]
+    point_list=[]
+    point_list.append(point)
+   
+    for i in range(nb_pass):
+       
+       
+       if i%2==0:
+           edge1=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(x2,yp,z))
+           xp=x2
+           point=[xp,yp,z]
+           point_list.append(point)
+           edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(xp,yp+step_over,z))
+           yp=yp+step_over
+           point=[xp,yp,z]
+           point_list.append(point)
+           
+       else:
+           edge1=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(x1,yp,z))
+           xp=x1
+           point=[xp,yp,z]
+           point_list.append(point)
+           edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(xp,yp+step_over,z))
+           yp=yp+step_over
+           point=[xp,yp,z]
+           point_list.append(point)
+           
+   
+       aWire1=BRepBuilderAPI_MakeWire(edge1.Edge())
+       aWire2=BRepBuilderAPI_MakeWire(edge2.Edge())
+       mkWire.Add(aWire1.Wire())
+       mkWire.Add(aWire2.Wire())
+    display.DisplayShape(mkWire.Shape())
+    
+    VertexExplorer = TopExp_Explorer(mkWire.Shape(), TopAbs_VERTEX)
+    while VertexExplorer.More():
+          aVertex = topods.Vertex(VertexExplorer.Current())
+          VertexExplorer.Next()
+    return point_list
+               
+               
+def translate_topods_from_vector(brep_or_iterable, vec, copy=False):
+    '''
+    translate a brep over a vector
+    @param brep:    the Topo_DS to translate
+    @param vec:     the vector defining the translation
+    @param copy:    copies to brep if True
+    '''
+    trns = gp_Trsf()
+    trns.SetTranslation(vec)
+    brep_trns = BRepBuilderAPI_Transform(brep_or_iterable, trns, copy)
+    brep_trns.Build()
+    return brep_trns.Shape()
+
+
+def Load_CAD_Model_STL():
+    
+    stl_shp = read_stl_file('mymodel3.stl')
+    
+    #height of chamber box
+    hieght=z_max_finder(stl_shp)
+    
+    #making chamber box
+    box_shape = BRepPrimAPI_MakeBox(gp_Pnt(-50, -50, 0),100, 100, hieght).Shape()
+   
+    display.DisplayShape(stl_shp)
+    display.DisplayShape(box_shape,color = "BLACK", transparency = 0.7)
+    
+    display.FitAll()
+ 
+def make_vertex_list(section):
+    #getting a vertex from a intersection between an offset Wire and an Edge
+    sections2=[]
+    VertexExplorer = TopExp_Explorer(section.Shape(), TopAbs_VERTEX)
+    while VertexExplorer.More():
+          aVertex = topods.Vertex(VertexExplorer.Current())
+          sections2.append(aVertex)
+          VertexExplorer.Next()
+          
+    if sections2!=[]:
+       return sections2
+    else:
+        a=int(0)
+        return a
+    
+def find_closest_vertex(vertex_list,x):
+    distance=10000
+    
+    for i in range(len(vertex_list)) :
+        my_X=Get_my_X(vertex_list[i])
+        if abs(my_X-x)<distance:
+            distance=abs(my_X-x)
+            my_vertex=vertex_list[i]
+    
+    return my_vertex
+        
+def section_point_finder_left(x1,x2,y,z,offset):
+#finding the intersection point between a raster line and the offset wire
+    myedge=BRepBuilderAPI_MakeEdge(gp_Pnt(x1,y,z),gp_Pnt(x2,y,z))
+    boolean_result =BRepAlgoAPI_Section(offset.Shape(),myedge.Shape())
+    mynewvertex=make_vertex_list(boolean_result)
+    
+    if type(mynewvertex)!=int:
+        best_vertex=find_closest_vertex(mynewvertex,x2)
+        x=Get_my_X(best_vertex)
+        y=Get_my_Y(best_vertex)
+        z=Get_my_Z(best_vertex)
+        point13=gp_Pnt(x,y,z)
+        display.DisplayShape(point13)
+        return point13
+    else:
+        a=int(0)
+        return a
+    
+def section_point_finder_right(x1,x2,y,z,offset):
+#finding the intersection point between a raster line and the offset wire
+    myedge=BRepBuilderAPI_MakeEdge(gp_Pnt(x1,y,z),gp_Pnt(x2,y,z))
+    boolean_result =BRepAlgoAPI_Section(offset.Shape(),myedge.Shape())
+    mynewvertex=make_vertex_list(boolean_result)
+    
+    if type(mynewvertex)!=int:
+        best_vertex=find_closest_vertex(mynewvertex,x1)
+        x=Get_my_X(best_vertex)
+        y=Get_my_Y(best_vertex)
+        z=Get_my_Z(best_vertex)
+        point13=gp_Pnt(x,y,z)
+        display.DisplayShape(point13)
+        return point13
+    else:
+        a=int(0)
+        return a    
+    
+def raster_from_offset(x1,y1,x2,y2,z,step_over,offset_wire) :
+    #collecting all edges in a list to make a wire at the end
+    edges_list_1=[]
+    #number of steps
+    nb_steps=int(abs(y1-y2)//step_over)
+    #proper lebgth of step over to cover whole area
+    step_over=abs(y1-y2)/nb_steps
+    
+    #area is been devided in to two in order to be accessable for section finding
+    x_mid=(abs(x1-x2)/2)+x1+2
+    x_section=x1+1
+
+    #current position is described and changes during loop
+    xp=x2
+    yp=y1
+    for i in range(nb_steps):
+        section_point1=section_point_finder_right(x2,x_section,yp,z,offset_wire)
+        section_point2=section_point_finder_right(x2,x_section,yp+step_over,z,offset_wire)
+
+        if i%2==0:
+           if type(section_point1)==int:
+               edge1=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(x_mid,yp,z))
+               xp=x_mid
+               if type(section_point2)==int:
+                  edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(xp,yp+step_over,z))
+                  yp=yp+step_over
+               else:
+                   edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),section_point2)
+                   xp=section_point2.X()
+                   yp=section_point2.Y()
+                   
+           else:
+               edge1=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),section_point1)
+               xp=section_point1.X()
+               yp=section_point1.Y()
+               if type(section_point2)==int:
+                  edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(xp,yp+step_over,z))
+                  yp=yp+step_over
+               else:
+                   edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),section_point2)
+                   xp=section_point2.X()
+                   yp=section_point2.Y()
+           
+        else:
+           edge1=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(x2,yp,z))
+           xp=x2
+           edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(xp,yp+step_over,z))
+           yp=yp+step_over
+           
+        display.DisplayShape(edge1.Shape())
+        display.DisplayShape(edge2.Shape())
+    x_mid=(abs(x1-x2)/2)+x1-2
+    x_section=x2-1
+
+    #current position is described and changes during loop
+    xp=x1
+    yp=y1
+    for i in range(nb_steps):
+        section_point1=section_point_finder_left(x_section,x1,yp,z,offset_wire)
+        section_point2=section_point_finder_left(x_section,x1,yp+step_over,z,offset_wire)
+
+        if i%2==0:
+           if type(section_point1)==int:
+               edge1=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(x_mid,yp,z))
+               xp=x_mid
+               if type(section_point2)==int:
+                  edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(xp,yp+step_over,z))
+                  yp=yp+step_over
+               else:
+                   edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),section_point2)
+                   xp=section_point2.X()
+                   yp=section_point2.Y()
+                   
+           else:
+               edge1=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),section_point1)
+               xp=section_point1.X()
+               yp=section_point1.Y()
+               if type(section_point2)==int:
+                  edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(xp,yp+step_over,z))
+                  yp=yp+step_over
+               else:
+                   edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),section_point2)
+                   xp=section_point2.X()
+                   yp=section_point2.Y()
+           
+        else:
+           edge1=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(x1,yp,z))
+           xp=x1
+           edge2=BRepBuilderAPI_MakeEdge(gp_Pnt(xp,yp,z),gp_Pnt(xp,yp+step_over,z))
+           yp=yp+step_over
+           
+        display.DisplayShape(edge1.Shape())
+        display.DisplayShape(edge2.Shape())
+
+ 
+
+def Generating_Path(event=None):
+    list1=[]
+    #z distance between each level defined by user
+    satndard_z_level_depth=3
+    stl_shp = read_stl_file('mymodel3.stl')   
+    z_max=z_max_finder(stl_shp)
+    
+    #number of possible levels
+    nb_z_level= z_max//satndard_z_level_depth
+    nb_z_level=int(nb_z_level)
+    
+    #proper z level distance for the current loaded model with respect to standard
+    my_z_level=z_max/nb_z_level
+    
+    
+    for i in range(nb_z_level):
+        # to avoid having section on z=0 then +1 is added to first level.
+        myWire=Section_finder(i*my_z_level+1,stl_shp)
+        list1.append(myWire)
+    offset_list=[]
+    for j in range(len(list1)):
+        z_level=Get_my_Z(list1[j].Vertex())
+        offset=BRepOffsetAPI_MakeOffset(list1[j].Wire(),GeomAbs_Arc,False)
+        offset.Perform(4,0.0)
+        display.DisplayShape(offset.Shape())
+        offset_list.append(offset)
+        offset2=BRepOffsetAPI_MakeOffset(list1[j].Wire(),GeomAbs_Arc,False)
+        offset2.Perform(6,0.0)
+        raster1=raster_from_offset(-50,-50,50,50,z_level,2,offset2)
+        #display.DisplayShape(list1[j].Shape())
+        
+    
+    step_over=5
+    top_level_point_list=top_level_rasetr(-50,-50,50,50,z_max+5,step_over)
+    
+def vertex_distance(vertex1,vertex2):
+    x1=Get_my_X(vertex1)   
+    y1=Get_my_Y(vertex1)
+    z1=Get_my_Z(vertex1)
+    x2=Get_my_X(vertex2)
+    y2=Get_my_Y(vertex2)
+    z2=Get_my_Z(vertex2)
+    
+    distance=math.sqrt((x2-x1)**2+(y2-y1)**2+(z2-z1)**2)
+    return distance
+    
+    
+def make_move(point1,point2):
+    #moving from point1 to point2
+    p1=gp_Pnt(point1[0],point1[1],point1[2])    
+    p2=gp_Pnt(point2[0],point2[1],point2[2])  
+    
+    speed=int((abs(point2[0]-point1[0])+abs(point2[1]-point1[1]))*4)
+    delta_x=(point2[0]-point1[0])/speed
+    delta_y=(point2[1]-point1[1])/speed
+
+    my_cylinder=build_shape(point1[0],point1[1],point1[2])
+    my_cylinder_Trsf= gp_Trsf()
+    #speed+1 due to counting i forn zero
+    for i in range( speed+1):
+        my_cylinder_Trsf.SetTranslation(gp_Pnt(point1[0],point1[1],point1[2]),gp_Pnt(point1[0]+delta_x*i,point1[1]+delta_y*i,point1[2]))
+        my_cylinder_location = TopLoc_Location(my_cylinder_Trsf)
+        display.Context.SetLocation(my_cylinder, my_cylinder_location)
+        display.Context.UpdateCurrentViewer()
+    display.Context.Remove(my_cylinder,True)
+    
+    
+def build_shape(x,y,z):
+    point1=gp_Pnt(x,y,z) 
+    dir1=gp_Dir(0,0,10)
+    axis1=gp_Ax2(point1,dir1)
+    boxshp = BRepPrimAPI_MakeCylinder(axis1,2,50).Shape()
+    ais_boxshp = display.DisplayShape(boxshp, update=True)[0]
+    return ais_boxshp 
+   
+def simulate(point_list):
+
+    for j in range(len(point_list)-1):
+        point1=point_list[j]
+        point2=point_list[j+1]
+        mymove=make_move(point1,point2)
+
+
+def Simulate_top_raster():
+    
+    simulate(top_level_rasetr(-50,-50,51,51,20,10))
+  
+if __name__ == '__main__':
+    add_menu('Creat Trajectory')
+    add_function_to_menu('Creat Trajectory', Load_CAD_Model_STL)
+    add_function_to_menu('Creat Trajectory', Generating_Path)
+    add_function_to_menu('Creat Trajectory', Simulate_top_raster)
+    
+    
+
+ 
+    start_display()
