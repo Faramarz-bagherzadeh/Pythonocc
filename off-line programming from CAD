@@ -3,7 +3,7 @@ import sys
 import time
 import os
 from OCC.Display.SimpleGui import init_display
-from OCC.Extend.DataExchange import read_stl_file
+from OCC.Extend.DataExchange import *
 from OCC.Core.BRepExtrema import *
 from OCC.Display.SimpleGui import init_display
 from OCC.Core.StlAPI import *
