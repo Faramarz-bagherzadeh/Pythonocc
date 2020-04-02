@@ -29,7 +29,8 @@ from OCC.Core.BRepBuilderAPI import *
 from OCC.Core.BRepPrimAPI import *
 from OCC.Display.SimpleGui import init_display
 from OCC.Core.gp import *
-from OCC.Core.BRepOffsetAPI import BRepOffsetAPI_MakeOffset
+from OCC.Core.BRepOffsetAPI import *
+from OCC.Core.BRepOffset import *
 from OCC.Core.GeomAbs import *
 display, start_display, add_menu, add_function_to_menu = init_display()
 
@@ -234,13 +235,15 @@ def translate_topods_from_vector(brep_or_iterable, vec, copy=False):
 
 def Load_CAD_Model_STL():
     
-    stl_shp = read_stl_file('mymodel3.stl')
+    stl_shp = read_stl_file('mymodel2.stl')
+    # for reading IGS files
+    #stl_shp=read_iges_file()
     
 #height of chamber box
     hieght=z_max_finder(stl_shp)
     
     #making chamber box
-    box_shape = BRepPrimAPI_MakeBox(gp_Pnt(-50, -50, 0),100, 100, 20).Shape()
+    box_shape = BRepPrimAPI_MakeBox(gp_Pnt(-50, -50, 0),100, 100, 60).Shape()
    
     display.DisplayShape(stl_shp)
     display.DisplayShape(box_shape,color = "BLACK", transparency = 0.7)
@@ -481,16 +484,16 @@ def Generating_Path(event=None):
     z_level_list=[]
     for j in range(len(list1)):
         z_level=Get_my_Z(list1[j].Vertex())
-        offset=BRepOffsetAPI_MakeOffset(list1[j].Wire(),GeomAbs_Arc,False)
+        offset=BRepOffsetAPI_MakeOffset(list1[j].Wire(),GeomAbs_Intersection,False)
         offset.Perform(4,0.0)
         
         display.DisplayShape(offset.Shape())
         offset1_list.append(offset)
-        offset2=BRepOffsetAPI_MakeOffset(list1[j].Wire(),GeomAbs_Arc,False)
-        offset2.Perform(6,0.0)
+        offset2=BRepOffsetAPI_MakeOffset(list1[j].Wire(),GeomAbs_Intersection,False)
+        offset2.Perform(1,0.0)
         offset2_list.append(offset2)
         z_level_list.append(z_level)
-        raster1=raster_from_offset(-50,-50,50,50,z_level,2,offset2)
+        #raster1=raster_from_offset(-50,-50,50,50,z_level,2,offset2)
         display.DisplayShape(list1[j].Shape())
         
     
@@ -528,7 +531,7 @@ def make_move(point1,point2,angle):
     p1=gp_Pnt(point1[0],point1[1],point1[2])    
     p2=gp_Pnt(point2[0],point2[1],point2[2])  
     
-    speed=int((abs(point2[0]-point1[0])+abs(point2[1]-point1[1])+abs(point2[2]-point1[2]))*2)+1
+    speed=int((abs(point2[0]-point1[0])+abs(point2[1]-point1[1])+abs(point2[2]-point1[2]))*0.1)+1
     delta_x=(point2[0]-point1[0])/speed
     delta_y=(point2[1]-point1[1])/speed
     delta_z=(point2[2]-point1[2])/speed
@@ -590,6 +593,7 @@ def find_boundary_points_form_offset(edges_list):
                 boundary_point_list.append(vertex1)
                 edge_nb=i+1
                 break
+    boundary_point_list.append([boundary_point_list[-1][0],boundary_point_list[-1][1],40])
 
     return boundary_point_list
 
@@ -608,7 +612,7 @@ def show_path_from_points(point_list):
         display.DisplayShape(edge.Shape())
 
 def Simulate_top_raster():
-    simulate(top_level_rasetr(-50,-50,51,51,20,10),90)
+    simulate(top_level_rasetr(-60,-60,70,70,50,10),90)
 def reverse_point_list(point_list):
     point_list2=[]
     for i in range(len(point_list)-1):
@@ -621,14 +625,17 @@ def Simulate_raster_from_offset():
     path_offset=path[0]
     path_z_level=path[1]
     display.EraseAll()
-    stl_shp = read_stl_file('mymodel3.stl')  
+    stl_shp = read_stl_file('mymodel3.stl')
+    stl_shp2 = read_stl_file('mymodel2.stl') 
+    # for reading IGS files
+    #stl_shp=read_iges_file()
     hieght=z_max_finder(stl_shp)
     #making chamber box
-    box_shape = BRepPrimAPI_MakeBox(gp_Pnt(-50, -50, 0),100, 100, hieght).Shape()
-    display.DisplayShape(stl_shp)
+    box_shape = BRepPrimAPI_MakeBox(gp_Pnt(-70, -70, 0),130, 130, hieght).Shape()
+    display.DisplayShape(stl_shp2)
     display.DisplayShape(box_shape,color = "BLACK", transparency = 0.7)
     for i in range(len(path_z_level)-1):
-        my_path=raster_from_offset(-50,-50,51,51,path_z_level[-i-1],4,path_offset[-i-1])
+        my_path=raster_from_offset(-70,-70,65,65,path_z_level[-i-1],4,path_offset[-i-1])
       
         show_path_from_points(my_path)
         simulate(my_path,90)
@@ -637,12 +644,14 @@ def Simulate_offset():
     path=Generating_Path()
     display.EraseAll()
     stl_shp = read_stl_file('mymodel3.stl')  
-    #stl_shp2 = read_stl_file('mymodel2.stl') 
+    stl_shp2 = read_stl_file('mymodel2.stl')
+# for reading IGS files
+    #stl_shp=read_iges_file()
     hieght=z_max_finder(stl_shp)
     #making chamber box
-    box_shape = BRepPrimAPI_MakeBox(gp_Pnt(-50, -50, 0),100, 100, hieght).Shape()
-    display.DisplayShape(stl_shp)
-    display.DisplayShape(box_shape,color = "BLACK", transparency = 0.7)
+    #box_shape = BRepPrimAPI_MakeBox(gp_Pnt(-25, -25, 0),60, 60, hieght).Shape()
+    display.DisplayShape(stl_shp2)
+    #display.DisplayShape(box_shape,color = "BLACK", transparency = 0.7)
     path_offset=path[0]
     path_z_level=path[1]
     all_points=[]
@@ -653,9 +662,9 @@ def Simulate_offset():
           
             outer_points=find_boundary_points_form_offset(edge_list)
        
-        all_points=my_connector(outer_points,all_points)
+        #all_points=my_connector(outer_points,all_points)
             
-    simulate(all_points,45)
+        simulate(outer_points,45)
 
 def my_connector(point_list1,point_list2):
     for i in range(len(point_list1)):
